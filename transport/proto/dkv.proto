@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package dkv;
+
+option go_package="dkv/transport/proto/dkvpb";
+
+// 도메인 타입
+
+message Command {
+    string op = 1; // "PUT", "GET", "DEL", "NOOP"
+    string key = 2;
+    string value = 3;
+    string client_id = 4;
+    uint64 request_id = 5;
+}
+
+message Ballot {
+    uint64 number = 1;
+    uint32 node_id = 2;
+}
+
+message LogEntry {
+    uint64 index = 1;
+    Ballot ballot = 2;
+    Command command = 3;
+}
+
+// paxos rpc
+
+message PrepareRequest {
+    Ballot ballot = 1;
+}
+
+message PrepareResponse {
+    bool ok = 1;
+    Ballot promised_ballot = 2;
+    repeated AcceptedEntry accepted_entries = 3;
+    bool lease_active = 4;  // leader lease로 인한 거부인 경우 true
+}
+
+message AcceptedEntry {
+    uint64 slot = 1;
+    Ballot ballot = 2;
+    Command command = 3;
+}
+
+message AcceptRequest {
+    uint64 slot = 1;
+    Ballot ballot = 2;
+    Command command = 3;
+}
+
+message AcceptResponse {
+    bool ok = 1;
+    Ballot promised_ballot = 2;
+}
+
+message CommitRequest {
+    uint64 slot = 1;
+    Command command = 2;
+}
+
+message CommitResponse {}
+
+message CatchupRequest {
+    uint64 after_slot = 1;
+}
+
+message CatchupResponse {
+    repeated LogEntry entries = 1;
+}
+
+message HeartbeatRequest {
+    uint32 leader_id = 1;
+    Ballot ballot = 2;
+    uint64 committed_up_to = 3;
+}
+
+message HeartbeatResponse {
+    bool success = 1;
+}
+
+// WAL 레코드
+
+message WALRecord {
+    enum Type {
+        UNKNOWN = 0;
+        ACCEPTOR_STATE = 1;
+        COMMITTED_ENTRY = 2;
+    }
+    Type type = 1;
+    AcceptorStateRecord acceptor_state = 2;
+    LogEntry committed_entry = 3;
+}
+
+message AcceptorStateRecord {
+    uint64 slot = 1;
+    Ballot promised_ballot = 2;
+    Ballot accepted_ballot = 3;
+    Command accepted_value = 4;
+}
+
+// 스냅샷
+
+message SnapshotData {
+    uint64 last_index = 1;
+    map<string,string> kv_data = 2;
+}
+
+// grpc 서비스
+
+service DKVConsensus {
+    rpc Prepare (PrepareRequest) returns (PrepareResponse);
+    rpc Accept (AcceptRequest) returns (AcceptResponse);
+    rpc Commit (CommitRequest) returns (CommitResponse);
+    rpc Catchup (CatchupRequest) returns (CatchupResponse);
+    rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
+}
